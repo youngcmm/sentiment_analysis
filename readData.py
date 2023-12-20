@@ -82,5 +82,5 @@ def load_data_imdb(batch_size, num_steps=500):
     return train_iter, test_iter, vocab
 
 
-train_iter, test_iter, vocab = load_data_imdb(64)
-print(train_iter)
+# train_iter, test_iter, vocab = load_data_imdb(64)
+# print(train_iter)
