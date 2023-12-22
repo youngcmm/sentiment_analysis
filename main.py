@@ -111,6 +111,7 @@ def main():
 
         load = True
         if load:
+            print('loading RNN.pt')
             net = torch.load('RNN.pt')
         else:
             train(net=net, train_iter=train_iter, test_iter=test_iter,
@@ -135,15 +136,15 @@ def main():
         loss = nn.CrossEntropyLoss(reduction="none")
 
 
-        load = False
+        load = True
         if load:
+            print('loading Attend.pt')
             net = torch.load('Attend.pt')
         else:
             train(net, train_iter, test_iter, loss, trainer, num_epochs, devices=d2l.try_all_gpus(),
                   model_name='Attend')
 
-        print(predict_sentiment(net, vocab, 'this move is good.'))
-
+        print(predict_snli(net, vocab, ['he', 'is', 'good', '.'], ['he', 'is', 'bad', '.']))
 
 if __name__ == '__main__':
     main()
