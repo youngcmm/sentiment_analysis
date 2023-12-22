@@ -95,25 +95,23 @@ class SNLIDataset(torch.utils.data.Dataset):
         self.num_steps = num_steps
         all_premise_tokens = d2l.tokenize(dataset[0])
         all_hypothesis_tokens = d2l.tokenize(dataset[1])
-
         if vocab is None:
-            self.vocab = d2l.Vocab(all_hypothesis_tokens + all_hypothesis_tokens,
+            self.vocab = d2l.Vocab(all_premise_tokens + all_hypothesis_tokens,
                                    min_freq=5, reserved_tokens=['<pad>'])
         else:
             self.vocab = vocab
-
         self.premises = self._pad(all_premise_tokens)
-        self.hypothesis_tokens = self._pad(all_hypothesis_tokens)
+        self.hypotheses = self._pad(all_hypothesis_tokens)
         self.labels = torch.tensor(dataset[2])
-        print('read' + str(len(self.premises)) + 'examples')
+        print('read ' + str(len(self.premises)) + ' examples')
 
     def _pad(self, lines):
         return torch.tensor([d2l.truncate_pad(
-            self.vocab[line], self.num_steps, self.vocab['<pad>']
-        ) for line in lines])
+            self.vocab[line], self.num_steps, self.vocab['<pad>'])
+            for line in lines])
 
-    def _getitem(self, idx):
-        return (self.premises[idx], self.num_steps), self.labels[idx]
+    def __getitem__(self, idx):
+        return (self.premises[idx], self.hypotheses[idx]), self.labels[idx]
 
     def __len__(self):
         return len(self.premises)
@@ -121,52 +119,42 @@ class SNLIDataset(torch.utils.data.Dataset):
 
 def load_data_snli(batch_size, num_step=50):
     # num_workers = d2l.get_dataloader_workers()
-    # if os.path.exists('train_data_snli.pkl') and os.path.exists('test_data_snli.pkl'):
-    #     with open('train_data_snli.pkl', 'rb') as f:
-    #         train_data = pickle.load(f)
-    #         f.close()
-    #     with open('test_data_snli.pkl', 'rb') as f:
-    #         test_data = pickle.load(f)
-    #         f.close()
-    # else:
-        # train_data = read_snli(is_train=True)
-        # test_data = read_snli(is_train=False)
-        # save_local_train_file = 'train_data_snil.pkl'
-        #
-        # with open(save_local_train_file, 'wb') as f:
-        #     pickle.dump(train_data, f)
-        # print(f"train_data 已保存到文件: {save_local_train_file}")
-        #
-        # save_local_test_file = 'test_data_snil.pkl'
-        #
-        # with open(save_local_test_file, 'wb') as f:
-        #     pickle.dump(test_data, f)
-        # print(f"test_data 已保存到文件: {save_local_test_file}")
+    if os.path.exists('train_data_snli.pkl') and os.path.exists('test_data_snli.pkl'):
+        with open('train_data_snli.pkl', 'rb') as f:
+            train_data = pickle.load(f)
+            f.close()
+        with open('test_data_snli.pkl', 'rb') as f:
+            test_data = pickle.load(f)
+            f.close()
+    else:
+        train_data = read_snli(is_train=True)
+        test_data = read_snli(is_train=False)
+        save_local_train_file = 'train_data_snil.pkl'
 
-    train_data = read_snli(is_train=True)
-    test_data = read_snli(is_train=False)
-    save_local_train_file = 'train_data_snil.pkl'
+        with open(save_local_train_file, 'wb') as f:
+            pickle.dump(train_data, f)
+        print(f"train_data 已保存到文件: {save_local_train_file}")
 
-    with open(save_local_train_file, 'wb') as f:
-        pickle.dump(train_data, f)
-    print(f"train_data 已保存到文件: {save_local_train_file}")
+        save_local_test_file = 'test_data_snil.pkl'
 
-    save_local_test_file = 'test_data_snil.pkl'
-
-    with open(save_local_test_file, 'wb') as f:
-        pickle.dump(test_data, f)
-    print(f"test_data 已保存到文件: {save_local_test_file}")
+        with open(save_local_test_file, 'wb') as f:
+            pickle.dump(test_data, f)
+        print(f"test_data 已保存到文件: {save_local_test_file}")
 
     train_set = SNLIDataset(train_data, num_step)
     test_set = SNLIDataset(test_data, num_step, train_set.vocab)
 
     train_iter = torch.utils.data.DataLoader(train_set, batch_size, shuffle=True)
     test_iter = torch.utils.data.DataLoader(test_set, batch_size, shuffle=False)
+
     return train_iter, test_iter, test_set.vocab
 
 
-train_iter, test_iter, vocab = load_data_snli(128, 50)
-len(vocab)
+# train_iter, test_iter, vocab = load_data_snli(128, 50)
+
+# for i, (_, _) in range(train_iter):
+#     pass
+# len(vocab)
 
 
 # train_data = read_imdb(data_dir, is_train=True)
@@ -208,3 +196,4 @@ len(vocab)
 # #
 # # train_iter = d2l.load_array(train_features,
 # #                             torch.tensor(train_data[1]), 64) #64是一个batchSize的大小。
+# for i, (features, labels) in enumerate(train_iter):
