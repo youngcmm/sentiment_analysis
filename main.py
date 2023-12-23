@@ -1,13 +1,18 @@
+import multiprocessing
+import os.path
+
 import torch.nn
 from tqdm import tqdm
 
 from Attend.Attend import DecomposableAttention
+from BERT.Bert import load_pretrained_model, BERTClassifier
 from RNN.BirRNN import BiRNN
 import torch
 from torch import nn
 from d2l import torch as d2l
 
-from readData import load_data_snli
+from readData import load_data_snli, read_snli, SNLIBERTDataset
+import torch.utils.data
 
 
 def init_weights(m):
@@ -77,15 +82,38 @@ def predict_sentiment(net, vocab, sequence):
     label = torch.argmax(net(sequence.reshape(1, -1)), dim=1)
     return 'positive' if label == 1 else 'negative'
 
+
 def predict_snli(net, vocab, premise, hypothesis):
     """Predict the logical relationship between the premise and hypothesis."""
     net.eval()
     premise = torch.tensor(vocab[premise], device=d2l.try_gpu())
     hypothesis = torch.tensor(vocab[hypothesis], device=d2l.try_gpu())
     label = torch.argmax(net([premise.reshape((1, -1)),
-                           hypothesis.reshape((1, -1))]), dim=1)
+                              hypothesis.reshape((1, -1))]), dim=1)
     return 'entailment' if label == 0 else 'contradiction' if label == 1 \
-            else 'neutral'
+        else 'neutral'
+
+
+def predict_snli_bert(net, vocab, premise, hypothesis):
+    """Predict the logical relationship between the premise and hypothesis."""
+    net.eval()
+    # premise = torch.tensor(vocab[premise], device=d2l.try_gpu())
+    # hypothesis = torch.tensor(vocab[hypothesis], device=d2l.try_gpu())
+    dataset = []
+    dataset.append(premise)
+    dataset.append(hypothesis)
+    batch_size, max_len, num_workers = 512, 128, d2l.get_dataloader_workers()
+    test_set = SNLIBERTDataset((premise, hypothesis, [0]), max_len=max_len, vocab=vocab)
+
+    # test_data = preprocess(all_premise_hypothesis_tokens)
+    test_iter = torch.utils.data.DataLoader(test_set, batch_size,
+                                            num_workers=num_workers)
+    label = []
+    for i, (features, _) in enumerate(test_iter):
+        label = torch.argmax(net(features), dim=1)
+    return 'entailment' if label[0] == 0 else 'contradiction' if label[0] == 1 \
+        else 'neutral'
+
 
 def main():
     use_RNN = False
@@ -118,9 +146,9 @@ def main():
                   loss=loss, trainer=trainer, num_epochs=num_hiddens, model_name='RNN',
                   devices=devices)
 
-        predict_snli(net, vocab, ['he', 'is', 'good', '.'], ['he', 'is', 'bad', '.'])
+        print(predict_sentiment(net, vocab, 'the movie is good.'))
 
-    use_Attention = True
+    use_Attention = False
     if use_Attention:
         batch_size, num_steps = 128, 50
         train_iter, test_iter, vocab = load_data_snli(batch_size, num_steps)
@@ -135,7 +163,6 @@ def main():
         trainer = torch.optim.Adam(net.parameters(), lr=lr)
         loss = nn.CrossEntropyLoss(reduction="none")
 
-
         load = True
         if load:
             print('loading Attend.pt')
@@ -145,6 +172,39 @@ def main():
                   model_name='Attend')
 
         print(predict_snli(net, vocab, ['he', 'is', 'good', '.'], ['he', 'is', 'bad', '.']))
+
+    use_Bert = True
+    if use_Bert:
+        devices = d2l.try_all_gpus()
+        bert, vocab = load_pretrained_model(
+            'bert.small', num_hiddens=256, ffn_num_hiddens=512, num_heads=4,
+            num_blks=2, dropout=0.1, max_len=512, devices=devices)
+        batch_size, max_len, num_workers = 512, 128, d2l.get_dataloader_workers()
+
+        train_set = SNLIBERTDataset(read_snli(is_train=True), max_len=max_len, vocab=vocab)
+        test_set = SNLIBERTDataset(read_snli(is_train=False), max_len=max_len, vocab=vocab)
+
+        train_iter = torch.utils.data.DataLoader(train_set, batch_size, shuffle=True,
+                                                 num_workers=num_workers)
+        test_iter = torch.utils.data.DataLoader(test_set, batch_size,
+                                                num_workers=num_workers)
+        net = BERTClassifier(bert)
+        lr, num_epochs = 1e-4, 5
+        trainer = torch.optim.Adam(net.parameters(), lr=lr)
+        loss = nn.CrossEntropyLoss(reduction='none')
+        # net(next(iter(train_iter))[0])
+        # train(net, train_iter, test_iter, loss, trainer, num_epochs, devices)
+
+        if os.path.exists('Bert.pt'):
+            print('loading Bert.pt')
+            net = torch.load('Bert.pt')
+            net = net.to('cuda')
+        else:
+            train(net, train_iter, test_iter, loss, trainer, num_epochs, devices=d2l.try_all_gpus(),
+                  model_name='Bert')
+
+        print(predict_snli_bert(net, vocab, ['he is good.'], ['he is bad.']))
+
 
 if __name__ == '__main__':
     main()

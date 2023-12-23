@@ -3,7 +3,6 @@ from torch import nn
 from torch.nn import functional as F
 from d2l import torch as d2l
 
-
 def mlp(num_inputs, num_hiddens, flatten):
     net = []
 
@@ -20,7 +19,6 @@ def mlp(num_inputs, num_hiddens, flatten):
     if flatten:
         net.append(nn.Flatten(start_dim=1))
     return nn.Sequential(*net)
-
 
 class Attend(nn.Module):
     def __init__(self, num_inputs, num_hiddens, **kwargs):
@@ -87,4 +85,3 @@ class DecomposableAttention(nn.Module):
         V_A, V_B = self.compare(A, B, beta, alpha)
         Y_hat = self.aggregate(V_A, V_B)
         return Y_hat
-

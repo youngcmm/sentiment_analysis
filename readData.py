@@ -1,3 +1,4 @@
+import multiprocessing
 import os
 import torch
 from torch import nn
@@ -77,9 +78,10 @@ def read_snli(is_train):
         # 用一个空格替换两个或多个连续的空格
         s = re.sub('\\s{2,}', ' ', s)
         return s.strip()
+
     label_set = {'entailment': 0, 'contradiction': 1, 'neutral': 2}
     file_name = os.path.join(data_dir, 'snli_1.0_train.txt'
-                             if is_train else 'snli_1.0_test.txt')
+    if is_train else 'snli_1.0_test.txt')
     with open(file_name, 'r') as f:
         rows = [row.split('\t') for row in f.readlines()[1:]]
     premises = [extract_text(row[1]) for row in rows if row[0] in label_set]
@@ -117,6 +119,59 @@ class SNLIDataset(torch.utils.data.Dataset):
         return len(self.premises)
 
 
+class SNLIBERTDataset(torch.utils.data.Dataset):
+    def __init__(self, dataset, max_len, vocab=None):
+        all_premise_hypothesis_tokens = [[
+            p_tokens, h_tokens] for p_tokens, h_tokens in zip(
+            *[d2l.tokenize([s.lower() for s in sentences])
+              for sentences in dataset[:2]])]
+
+        self.labels = torch.tensor(dataset[2])
+        self.vocab = vocab
+        self.max_len = max_len
+        (self.all_token_ids, self.all_segments,
+         self.valid_lens) = self._preprocess(all_premise_hypothesis_tokens)
+        print('read ' + str(len(self.all_token_ids)) + ' examples')
+
+    def _preprocess(self, all_premise_hypothesis_tokens):
+        pool = multiprocessing.Pool(4)  # Use 4 worker processes
+        out = pool.map(self._mp_worker, all_premise_hypothesis_tokens)
+        all_token_ids = [
+            token_ids for token_ids, segments, valid_len in out]
+        all_segments = [segments for token_ids, segments, valid_len in out]
+        valid_lens = [valid_len for token_ids, segments, valid_len in out]
+        return (torch.tensor(all_token_ids, dtype=torch.long),
+                torch.tensor(all_segments, dtype=torch.long),
+                torch.tensor(valid_lens))
+
+    def _mp_worker(self, premise_hypothesis_tokens):
+        p_tokens, h_tokens = premise_hypothesis_tokens
+        self._truncate_pair_of_tokens(p_tokens, h_tokens)
+        tokens, segments = d2l.get_tokens_and_segments(p_tokens, h_tokens)
+        token_ids = self.vocab[tokens] + [self.vocab['<pad>']] \
+                             * (self.max_len - len(tokens))
+        segments = segments + [0] * (self.max_len - len(segments))
+        valid_len = len(tokens)
+        return token_ids, segments, valid_len
+
+    def _truncate_pair_of_tokens(self, p_tokens, h_tokens):
+        # Reserve slots for '<CLS>', '<SEP>', and '<SEP>' tokens for the BERT
+        # input
+        while len(p_tokens) + len(h_tokens) > self.max_len - 3:
+            if len(p_tokens) > len(h_tokens):
+                p_tokens.pop()
+            else:
+                h_tokens.pop()
+
+    def __getitem__(self, idx):
+        return (self.all_token_ids[idx], self.all_segments[idx],
+                self.valid_lens[idx]), self.labels[idx]
+
+    def __len__(self):
+        return len(self.all_token_ids)
+
+
+
 def load_data_snli(batch_size, num_step=50):
     # num_workers = d2l.get_dataloader_workers()
     if os.path.exists('train_data_snli.pkl') and os.path.exists('test_data_snli.pkl'):
@@ -148,7 +203,6 @@ def load_data_snli(batch_size, num_step=50):
     test_iter = torch.utils.data.DataLoader(test_set, batch_size, shuffle=False)
 
     return train_iter, test_iter, test_set.vocab
-
 
 # train_iter, test_iter, vocab = load_data_snli(128, 50)
 
